@@ -1,32 +1,73 @@
-# alpine-pkg-glibc
+# 📦 alpine-glibc
 
-[![CircleCI](https://circleci.com/gh/sgerrand/alpine-pkg-glibc/tree/main.svg?style=svg)](https://circleci.com/gh/sgerrand/alpine-pkg-glibc/tree/main) ![x86_64](https://img.shields.io/badge/x86__64-supported-brightgreen.svg)
+**Automated build and release system for GNU C Library (glibc) packages on Alpine Linux.**
 
-This is the [GNU C Library](https://gnu.org/software/libc/) as a Alpine Linux package to run binaries linked against `glibc`. This package utilizes a custom built glibc binary based on the vanilla glibc source. Built binary artifacts come from https://github.com/sgerrand/docker-glibc-builder.
+Alpine Linux uses `musl` libc by default. While efficient, this can break compatibility with pre-compiled binaries. This repository provides a GitHub Actions pipeline to generate **multi-architecture APK packages** for `glibc`, enabling seamless execution of glibc-linked applications on Alpine.
 
-## Releases
+## ✨ Features
 
-See the [releases page](https://github.com/sgerrand/alpine-pkg-glibc/releases) for the latest download links. If you are using tools like `localedef` you will need the `glibc-bin` and `glibc-i18n` packages in addition to the `glibc` package.
+* **🔄 Auto-Update:** Automatically tracks and builds the latest `glibc` versions.
+* **🏗️ Multi-Arch:** Native support for `x86_64` and `aarch64` (ARM64).
+* **🛠️ Reproducible:** Built inside standardized Docker containers for consistency.
+* **📦 Sub-package Support:** Includes `-dev`, `-bin`, and `-i18n` for full compatibility.
 
-## Installing
+---
 
-The current installation method for these packages is to pull them in using `wget` or `curl` and install the local file with `apk`:
+## 🚀 Installation & Usage
 
-    wget -q -O /etc/apk/keys/sgerrand.rsa.pub https://alpine-pkgs.sgerrand.com/sgerrand.rsa.pub
-    wget https://github.com/sgerrand/alpine-pkg-glibc/releases/download/2.35-r1/glibc-2.35-r1.apk
-    apk add glibc-2.35-r1.apk
+### 1. Identify Your Architecture
+Determine your system architecture to pick the right assets:
+```bash
+uname -m
 
-### Please Note
+```
 
-:warning: The URL of the public signing key has changed! :warning:
+### 2. Download and Install
 
-Any previous reference to `https://raw.githubusercontent.com/sgerrand/alpine-pkg-glibc/master/sgerrand.rsa.pub` should be updated with immediate effect to `https://alpine-pkgs.sgerrand.com/sgerrand.rsa.pub`.
+Replace `<VERSION>` and `<ARCH>` with your desired targets. We recommend installing both the base and the binary package.
 
-## Locales
+```bash
+# Example for v2.43 on aarch64
+VERSION="2.43-r0"
+ARCH="aarch64"
 
-You will need to generate your locale if you would like to use a specific one for your glibc application. You can do this by installing the `glibc-i18n` package and generating a locale using the `localedef` binary. An example for en_US.UTF-8 would be:
+wget https://github.com/Jobians/alpine-glibc/releases/download/v2.43/glibc-${VERSION}-${ARCH}.apk
+wget https://github.com/Jobians/alpine-glibc/releases/download/v2.43/glibc-bin-${VERSION}-${ARCH}.apk
 
-    wget https://github.com/sgerrand/alpine-pkg-glibc/releases/download/2.35-r1/glibc-bin-2.35-r1.apk
-    wget https://github.com/sgerrand/alpine-pkg-glibc/releases/download/2.35-r1/glibc-i18n-2.35-r1.apk
-    apk add glibc-bin-2.35-r1.apk glibc-i18n-2.35-r1.apk
-    /usr/glibc-compat/bin/localedef -i en_US -f UTF-8 en_US.UTF-8
+# Install the packages
+apk add --allow-untrusted glibc-${VERSION}-${ARCH}.apk glibc-bin-${VERSION}-${ARCH}.apk
+
+```
+
+### 3. Package Types
+
+| Package | Description |
+| --- | --- |
+| `glibc` | **Required.** The core shared libraries. |
+| `glibc-bin` | Helper binaries (ldconfig, etc). Recommended for most users. |
+| `glibc-i18n` | Locale and localization data. |
+| `glibc-dev` | Development headers (only needed if compiling software). |
+
+---
+
+## 🔧 Verification
+
+After installation, verify that the glibc dynamic linker is working:
+
+```bash
+/usr/glibc-compat/bin/ldd --version
+
+```
+
+---
+
+## 💖 Donate
+
+If you like this project and want to support development, you can donate using crypto:  
+
+[Donate here](https://cwallet.com/t/TE6A6KMV)
+
+## 📜 License
+
+* **Project:** MIT License
+* **glibc:** [GNU Lesser General Public License (LGPL)](https://www.gnu.org/licenses/lgpl-3.0.en.html)
