@@ -1,0 +1,137 @@
+name: Build and Release glibc
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '0 0 * * 0' # Weekly check for updates
+  workflow_dispatch:
+    inputs:
+      glibc_version:
+        description: "Manually override version (leave empty for latest)"
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+jobs:
+  check_version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.get_version.outputs.version }}
+      exists: ${{ steps.check_tag.outputs.exists }}
+    steps:
+      - name: Get Latest Version
+        id: get_version
+        run: |
+          if [ -n "${{ github.event.inputs.glibc_version }}" ]; then
+            echo "version=${{ github.event.inputs.glibc_version }}" >> $GITHUB_OUTPUT
+          else
+            # Scrape GNU mirror for the highest version number
+            LATEST=$(curl -s https://ftp.gnu.org/gnu/libc/ | grep -oE 'glibc-[0-9]+\.[0-9]+(\.[0-9]+)?\.tar\.xz' | sort -V | tail -n 1 | sed 's/glibc-//;s/\.tar\.xz//')
+            echo "version=$LATEST" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Check if Tag Exists
+        uses: mukunku/tag-exists-action@v1.6.0
+        id: check_tag
+        with: 
+          tag: 'v${{ steps.get_version.outputs.version }}'
+
+  build_docker:
+    needs: check_version
+    if: needs.check_version.outputs.exists == 'false'
+    name: Docker Build (${{ matrix.arch }})
+    strategy:
+      matrix:
+        include:
+          - arch: aarch64
+            runner: ubuntu-24.04-arm
+          - arch: x86_64
+            runner: ubuntu-latest
+    runs-on: ${{ matrix.runner }}
+    env:
+      GLIBC_VERSION: ${{ needs.check_version.outputs.version }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Create artifacts directory
+        run: mkdir -p artifacts
+
+      - name: Build Docker image
+        run: docker build -f builder/Dockerfile -t glibc-builder:${{ github.sha }} .
+
+      - name: Build glibc tarball
+        run: |
+          docker run --rm \
+            -e GLIBC_VERSION="${{ env.GLIBC_VERSION }}" \
+            -e STDOUT=1 \
+            glibc-builder:${{ github.sha }} \
+            > artifacts/glibc-${{ env.GLIBC_VERSION }}-0-${{ matrix.arch }}.tar.gz
+
+      - name: Upload Docker Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-glibc-${{ matrix.arch }}
+          path: artifacts/*.tar.gz
+
+  build_alpine:
+    needs: [check_version, build_docker]
+    if: needs.check_version.outputs.exists == 'false'
+    name: Alpine Build (${{ matrix.arch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: aarch64
+            runner: ubuntu-24.04-arm
+          - arch: x86_64
+            runner: ubuntu-latest
+    runs-on: ${{ matrix.runner }}
+    env:
+      GLIBC_VERSION: ${{ needs.check_version.outputs.version }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Fix git safe directory
+        run: git config --global --add safe.directory /github/workspace
+
+      - name: Download Docker Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: docker-glibc-${{ matrix.arch }}
+          path: packaging/
+
+      - name: Build glibc ${{ matrix.arch }}
+        uses: jobians/action-abuild@master
+        with:
+          PACKAGE_PATH: "packaging"
+          release_version: ${{ env.GLIBC_VERSION }}
+          rsa_private_key: ${{ secrets.RSA_PRIVATE_KEY }}
+          rsa_public_key: ${{ secrets.RSA_PUBLIC_KEY }}
+
+      - name: Rename APKs
+        run: |
+          sudo chown -R $USER:$USER packages/
+          TARGET_DIR=$(find packages -type f -name "*.apk" -exec dirname {} \; | head -n 1)
+          if [ -z "$TARGET_DIR" ]; then exit 1; fi
+          cd "$TARGET_DIR"
+          for f in *.apk; do
+            if [[ ! "$f" == *"-${{ matrix.arch }}.apk" ]]; then
+              mv "$f" "${f%.apk}-${{ matrix.arch }}.apk"
+            fi
+          done
+
+      - name: Create Release and Upload APKs
+        uses: ncipollo/release-action@v1
+        with:
+          tag: v${{ env.GLIBC_VERSION }}
+          name: "Alpine Glibc ${{ env.GLIBC_VERSION }}"
+          body: "Automated multi-arch build of Alpine glibc packages."
+          artifacts: "packages/**/*.apk"
+          allowUpdates: true
+          replacesArtifacts: true
+          token: ${{ secrets.GITHUB_TOKEN }}
