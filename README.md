@@ -10,7 +10,7 @@ Alpine Linux uses `musl libc` by default. This project provides a GitHub Actions
 * **🏗️ Multi-Arch**: native support for `x86_64` and `aarch64` (ARM64) only.
 * **🛠️ Reproducible**: built in standardized Docker containers.
 * **📦 Sub-packages**: `glibc`, `glibc-bin`, `glibc-libs`, `glibc-i18n`, `glibc-dev`.
-* **🔀 musl/glibc Switch**: `glibc-enable` / `glibc-disable` tools included in `glibc-bin`.
+* **🔀 musl/glibc Switch**: `glibc-enable` / `glibc-disable` tools included in `glibc-bin` (installed in `/usr/bin`).
 
 ---
 

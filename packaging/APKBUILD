@@ -13,12 +13,6 @@ install="$pkgname.post-install $pkgname.pre-deinstall"
 source="$pkgname-${pkgver}-$CARCH.tar.gz
     $pkgname-libs-${pkgver}-$CARCH.tar.gz
     ld.so.conf
-    $pkgname.post-install
-    $pkgname.pre-deinstall
-    $pkgname-bin.post-install
-    $pkgname-bin.pre-deinstall
-    $pkgname-libs.post-install
-    $pkgname-libs.pre-deinstall
     $pkgname-enable
     $pkgname-disable"
 
@@ -80,13 +74,13 @@ bin() {
         so:libutil.so.1=1
     "
 
-    mkdir -p "$subpkgdir"/usr/lib/glibc "$subpkgdir"/usr/local/bin
+    mkdir -p "$subpkgdir"/usr/lib/glibc "$subpkgdir"/usr/bin
     cp -a "$srcdir"/usr/lib/glibc/bin  "$subpkgdir"/usr/lib/glibc
     cp -a "$srcdir"/usr/lib/glibc/sbin "$subpkgdir"/usr/lib/glibc
 
     # musl/glibc switch tools
-    install -Dm0755 "$startdir"/$pkgname-enable  "$subpkgdir"/usr/local/bin/$pkgname-enable
-    install -Dm0755 "$startdir"/$pkgname-disable "$subpkgdir"/usr/local/bin/$pkgname-disable
+    install -Dm0755 "$startdir"/$pkgname-enable  "$subpkgdir"/usr/bin/$pkgname-enable
+    install -Dm0755 "$startdir"/$pkgname-disable "$subpkgdir"/usr/bin/$pkgname-disable
 }
 
 i18n() {
