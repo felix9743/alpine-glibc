@@ -13,6 +13,9 @@ on:
 permissions:
   contents: write
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   # ------------------------------------------------------------------
   # 1. Version detection & validation
@@ -137,10 +140,10 @@ jobs:
         run: |
           # Enable Trixie in APT sources (trusted=yes to avoid GPG signature issues in CI)
           echo "deb [trusted=yes] http://deb.debian.org/debian trixie main" | sudo tee /etc/apt/sources.list.d/trixie.list
-          sudo apt-get update -q
+          sudo apt update -q
           mkdir -p debs && cd debs
           # libtirpc3 is now libtirpc3t64 in Trixie due to 64-bit time transition
-          sudo apt-get download --allow-unauthenticated libstdc++6 libgcc-s1 libtirpc3t64
+          sudo apt download --allow-unauthenticated libstdc++6 libgcc-s1 libtirpc3t64
 
       - name: Extract .so libraries
         run: |

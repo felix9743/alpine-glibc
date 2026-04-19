@@ -12,16 +12,24 @@ ENV DEBIAN_FRONTEND=noninteractive
 ENV PREFIX_DIR=/usr/lib/glibc
 
 # Install dependencies
-RUN apt-get update -q && apt-get install -qy \
+RUN apt update -q && apt install -qy \
     bison \
     build-essential \
+    curl \
+    ca-certificates \
     gawk \
     gettext \
     linux-libc-dev \
     openssl \
-    python3 \
     texinfo \
     wget
+
+# Install uv for modern Python management
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+ENV PATH="/root/.local/bin:$PATH"
+
+# Install specific Python version via uv and link it as system python3
+RUN uv python install 3.12 && ln -sf $(uv python find 3.12) /usr/bin/python3
 
 # Create build directories
 RUN mkdir -p /builder /glibc-build
