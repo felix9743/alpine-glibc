@@ -251,7 +251,7 @@ jobs:
       - name: Build APK (Manual Robust Way)
         run: |
           echo "${{ secrets.RSA_PRIVATE_KEY }}" > ${{ github.workspace }}/packaging/private.rsa
-          echo "${{ secrets.RSA_PUBLIC_KEY }}" > ${{ github.workspace }}/packaging/public.rsa.pub
+          echo "${{ secrets.RSA_PUBLIC_KEY }}" > ${{ github.workspace }}/packaging/private.rsa.pub
 
           docker run --rm --platform ${{ matrix.platform }} \
             -v ${{ github.workspace }}/packaging:/work \
@@ -262,8 +262,12 @@ jobs:
               adduser -D builder -G abuild
 
               mkdir -p /home/builder/.abuild
+
               cp /work/private.rsa /home/builder/private.rsa
-              cp /work/public.rsa.pub /etc/apk/keys/
+              cp /work/private.rsa.pub /home/builder/private.rsa.pub
+
+              mkdir -p /etc/apk/keys
+              cp /work/private.rsa.pub /etc/apk/keys/private.rsa.pub
 
               echo \"PACKAGER_PRIVKEY='/home/builder/private.rsa'\" > /home/builder/.abuild/abuild.conf
               chown -R builder:abuild /home/builder /work
@@ -272,7 +276,7 @@ jobs:
             "
 
           rm -f ${{ github.workspace }}/packaging/private.rsa
-          rm -f ${{ github.workspace }}/packaging/public.rsa.pub
+          rm -f ${{ github.workspace }}/packaging/private.rsa.pub
 
       - name: Collect and Rename APKs
         run: |
