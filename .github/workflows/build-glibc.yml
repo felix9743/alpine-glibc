@@ -23,11 +23,6 @@ jobs:
       version: ${{ steps.resolve.outputs.version }}
       should_build: ${{ steps.resolve.outputs.should_build }}
     steps:
-      - name: Setup Node.js 24
-        uses: actions/setup-node@v4
-        with:
-          node-version: 24
-
       - name: Resolve target version
         id: resolve
         run: |
@@ -239,21 +234,26 @@ jobs:
             alpine:latest sh -c "
               apk add --no-cache abuild build-base bash
               adduser -D builder -G abuild
-              
+
               # Setup keys
-              echo \"\$RSA_PRIVATE_KEY\" > /home/builder/key.rsa
-              echo \"\$RSA_PUBLIC_KEY\" > /home/builder/key.rsa.pub
+              echo "$RSA_PRIVATE_KEY" > /home/builder/key.rsa
+              echo "$RSA_PUBLIC_KEY" > /home/builder/key.rsa.pub
               mkdir -p /etc/apk/keys
               cp /home/builder/key.rsa.pub /etc/apk/keys/
-              
+
               # Config abuild
+              mkdir -p /home/builder/.abuild
               echo \"PACKAGER_PRIVKEY=\\\"/home/builder/key.rsa\\\"\" > /home/builder/.abuild/abuild.conf
-              
+
               # Fix permissions
+              chown -R builder:abuild /home/builder
               chown -R builder:abuild /work
-              
+
               # Build
               su builder -c 'cd /work/packaging && abuild -r -P /work/packages'
+
+              # Restore permissions for GitHub Actions post-run cleanup
+              chown -R 1001:127 /work
             "
 
       - name: APK renaming (strip -rN, add architecture)

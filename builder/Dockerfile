@@ -22,7 +22,13 @@ RUN apt update -q && apt install -qy \
     linux-libc-dev \
     openssl \
     texinfo \
-    wget
+    wget \
+    && rm -rf /var/lib/apt/lists/*
+
+# Installation de Node.js 24 LTS via le script officiel NodeSource
+RUN curl -fsSL https://deb.nodesource.com/setup_24.x | bash - \
+    && apt install -y nodejs \
+    && rm -rf /var/lib/apt/lists/*
 
 # Install uv for modern Python management
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh
