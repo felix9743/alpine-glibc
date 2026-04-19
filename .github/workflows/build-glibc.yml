@@ -257,7 +257,7 @@ jobs:
             -v ${{ github.workspace }}/packaging:/work \
             -e PKGVER="${{ env.GLIBC_VERSION }}" \
             -e ARCH="${{ matrix.arch }}" \
-            alpine:3.latest sh -c "
+            alpine:latest sh -c "
               apk add --no-cache abuild build-base bash
               adduser -D builder -G abuild
 
@@ -270,6 +270,9 @@ jobs:
 
               su builder -c 'cd /work && abuild -r'
             "
+
+          rm -f ${{ github.workspace }}/packaging/private.rsa
+          rm -f ${{ github.workspace }}/packaging/public.rsa.pub
 
       - name: Collect and Rename APKs
         run: |
