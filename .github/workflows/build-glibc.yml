@@ -129,71 +129,66 @@ jobs:
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
-        with:
-          name: docker-glibc-${{ matrix.arch }}
-          path: packaging/
-      - uses: actions/download-artifact@v4
-        with:
-          name: debian-libs-${{ matrix.arch }}
-          path: packaging/
 
-      - name: Build and Rename APK
+      - name: Fetch artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: "*-${{ matrix.arch }}"
+          path: packaging/
+          merge-multiple: true
+
+      - name: Robust Alpine Build
         run: |
-          # 1. Prepare keys on host
-          echo "${{ secrets.RSA_PRIVATE_KEY }}" > packaging/private.rsa
-          echo "${{ secrets.RSA_PUBLIC_KEY }}" > packaging/private.rsa.pub
+          # 1. Create keys with fixed names
+          echo "${{ secrets.RSA_PRIVATE_KEY }}" > packaging/packager.rsa
+          echo "${{ secrets.RSA_PUBLIC_KEY }}" > packaging/packager.rsa.pub
 
-          # 2. Run build
+          # 2. Execute Build
           docker run --rm --platform ${{ matrix.platform }} \
             -v ${{ github.workspace }}/packaging:/work \
             -e PKGVER="${{ needs.check_version.outputs.version }}" \
             alpine:3.21 sh -c "
-              # Install tools
               apk add --no-cache abuild build-base bash
               adduser -D builder -G abuild
 
-              # Setup standard abuild environment
-              su builder -c 'abuild-keygen -a -n'
+              # Setup the internal abuild directory
+              mkdir -p /home/builder/.abuild
+              cp /work/packager.rsa /home/builder/.abuild/packager.rsa
+              cp /work/packager.rsa.pub /home/builder/.abuild/packager.rsa.pub
 
-              # Inject your custom keys into the builder's environment
-              # We use the name found in .abuild/abuild.conf or standard naming
-              KEY_NAME=\"$(ls /home/builder/.abuild/*.rsa | head -n 1 | xargs basename | sed 's/\.pub//')\"
-              cp /work/private.rsa /home/builder/.abuild/\$KEY_NAME
-              cp /work/private.rsa.pub /home/builder/.abuild/\$KEY_NAME.pub
+              # Mandatory: System must trust the public key to sign the index
+              mkdir -p /etc/apk/keys
+              cp /work/packager.rsa.pub /etc/apk/keys/packager.rsa.pub
 
-              # System-wide trust for the public key
-              cp /work/private.rsa.pub /etc/apk/keys/\$KEY_NAME.pub
+              # Explicit abuild configuration
+              echo 'PACKAGER_PRIVKEY=\"/home/builder/.abuild/packager.rsa\"' > /home/builder/.abuild/abuild.conf
 
-              # Final permissions check
+              # Fix permissions for the builder user
               chown -R builder:abuild /home/builder/.abuild /work
 
-              # Execution with full login shell to ensure abuild.conf is read
-              su - builder -c '
-                cd /work
-                abuild checksum
-                abuild -r
-              '
+              # Run build as builder
+              su - builder -c 'cd /work && abuild checksum && abuild -r'
             "
 
-          # 3. Cleanup and Collection
-          rm -f packaging/private.rsa packaging/private.rsa.pub
+      - name: Cleanup and Structure
+        if: always()
+        run: |
+          rm -f packaging/packager.rsa packaging/packager.rsa.pub
           mkdir -p final_packages
           sudo chown -R $USER:$USER packaging/pkg
 
-          # Improved collect: find all APKs and rename them properly
-          find packaging/pkg -name "*.apk" | while read -r apk; do
-            filename=$(basename "\$apk")
-            # Remove the release part (e.g., -r0) to keep it clean
-            clean_name=\$(echo \"\$filename\" | sed -E 's/-r[0-9]+//')
-            cp \"\$apk\" \"final_packages/\${clean_name%.apk}-${{ matrix.arch }}.apk\"
-          done
+          # Clean collect and rename
+          find packaging/pkg -name "*.apk" -exec sh -c '
+            NAME=$(basename "$1")
+            CLEAN_NAME=$(echo "$NAME" | sed -E "s/-r[0-9]+//")
+            cp "$1" "final_packages/${CLEAN_NAME%.apk}-${{ matrix.arch }}.apk"
+          ' _ {} \;
 
-      - uses: actions/upload-artifact@v4
+      - name: Upload APKs
+        uses: actions/upload-artifact@v4
         with:
-          name: apks-${{ matrix.arch }}
+          name: final-apks-${{ matrix.arch }}
           path: final_packages/*.apk
-          retention-days: 1
 
   # 5. Centralized Release
   publish_release:
