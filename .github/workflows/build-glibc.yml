@@ -272,7 +272,7 @@ jobs:
               echo \"PACKAGER_PRIVKEY='/home/builder/private.rsa'\" > /home/builder/.abuild/abuild.conf
               chown -R builder:abuild /home/builder /work
 
-              su builder -c 'cd /work && abuild -r'
+              su builder -c 'cd /work && abuild checksum && abuild -r'
             "
 
           rm -f ${{ github.workspace }}/packaging/private.rsa
