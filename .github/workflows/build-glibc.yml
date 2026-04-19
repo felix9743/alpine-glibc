@@ -46,9 +46,15 @@ jobs:
 
       - name: Check if tag already exists
         id: check_tag
-        uses: mukunku/tag-exists-action@v1.6.0
-        with:
-          tag: 'v${{ steps.resolve.outputs.version }}'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="v${{ steps.resolve.outputs.version }}"
+          if gh api repos/${{ github.repository }}/git/ref/tags/$TAG >/dev/null 2>&1; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
 
       - name: Decide whether to build
         id: decide
@@ -127,8 +133,8 @@ jobs:
     steps:
       - name: Download Debian Trixie packages
         run: |
-          # Enable Trixie in APT sources
-          echo "deb http://deb.debian.org/debian trixie main" | sudo tee /etc/apt/sources.list.d/trixie.list
+          # Enable Trixie in APT sources (trusted=yes to avoid GPG signature issues in CI)
+          echo "deb [trusted=yes] http://deb.debian.org/debian trixie main" | sudo tee /etc/apt/sources.list.d/trixie.list
           sudo apt-get update -q
           mkdir -p debs && cd debs
           # Native download (same arch as runner)
