@@ -248,6 +248,22 @@ jobs:
             echo "✅ $file présent"
           done
 
+      - name: Prepare Packaging Environment
+        run: |
+          # 1. Création physique des clés pour l'action
+          echo "${{ secrets.RSA_PRIVATE_KEY }}" > ${{ github.workspace }}/key
+          echo "${{ secrets.RSA_PUBLIC_KEY }}" > ${{ github.workspace }}/key.pub
+
+          # 2. Vérification de la présence des fichiers requis par l'APKBUILD
+          cd packaging
+          FILES=("APKBUILD" "ld.so.conf" "glibc-enable" "glibc-disable")
+          for f in "${FILES[@]}"; do
+            if [ ! -f "$f" ]; then
+              echo "❌ Erreur: $f manquant dans ./packaging"
+              exit 1
+            fi
+          done
+
       - name: Build APK (${{ matrix.arch }})
         uses: jobians/action-abuild@master
         with:
@@ -255,6 +271,19 @@ jobs:
           release_version: ${{ env.GLIBC_VERSION }}
           rsa_private_key: ${{ secrets.RSA_PRIVATE_KEY }}
           rsa_public_key: ${{ secrets.RSA_PUBLIC_KEY }}
+
+      - name: Collect and Rename APKs
+        run: |
+          mkdir -p final_packages
+          # On utilise sudo car l'action Docker crée les fichiers avec l'utilisateur root/builder
+          sudo find ~/packages -type f -name "*.apk" -exec cp {} final_packages/ \;
+
+          cd final_packages
+          for f in *.apk; do
+            # Nettoyage du nom : glibc-2.43-r0.apk -> glibc-2.43-x86_64.apk
+            newname=$(echo "$f" | sed "s/-r[0-9]*\.apk/-${{ matrix.arch }}.apk/")
+            [ "$f" != "$newname" ] && mv "$f" "$newname"
+          done
 
       - name: Collect and Rename APKs
         run: |
