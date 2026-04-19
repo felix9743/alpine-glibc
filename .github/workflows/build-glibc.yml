@@ -140,39 +140,54 @@ jobs:
 
       - name: Build and Rename APK
         run: |
-          # Write keys securely
+          # 1. Prepare keys on host
           echo "${{ secrets.RSA_PRIVATE_KEY }}" > packaging/private.rsa
           echo "${{ secrets.RSA_PUBLIC_KEY }}" > packaging/private.rsa.pub
 
-          # Docker run with direct export of PACKAGER_PRIVKEY
+          # 2. Run build
           docker run --rm --platform ${{ matrix.platform }} \
             -v ${{ github.workspace }}/packaging:/work \
             -e PKGVER="${{ needs.check_version.outputs.version }}" \
-            -e ARCH="${{ matrix.arch }}" \
             alpine:3.21 sh -c "
+              # Install tools
               apk add --no-cache abuild build-base bash
               adduser -D builder -G abuild
 
-              cp /work/private.rsa /home/builder/
-              cp /work/private.rsa.pub /home/builder/
-              mkdir -p /etc/apk/keys && cp /work/private.rsa.pub /etc/apk/keys/
-              chown -R builder:abuild /home/builder /work
+              # Setup standard abuild environment
+              su builder -c 'abuild-keygen -a -n'
 
-              su builder -c '
-                export PACKAGER_PRIVKEY=\"/home/builder/private.rsa\"
+              # Inject your custom keys into the builder's environment
+              # We use the name found in .abuild/abuild.conf or standard naming
+              KEY_NAME=\"$(ls /home/builder/.abuild/*.rsa | head -n 1 | xargs basename | sed 's/\.pub//')\"
+              cp /work/private.rsa /home/builder/.abuild/\$KEY_NAME
+              cp /work/private.rsa.pub /home/builder/.abuild/\$KEY_NAME.pub
+
+              # System-wide trust for the public key
+              cp /work/private.rsa.pub /etc/apk/keys/\$KEY_NAME.pub
+
+              # Final permissions check
+              chown -R builder:abuild /home/builder/.abuild /work
+
+              # Execution with full login shell to ensure abuild.conf is read
+              su - builder -c '
                 cd /work
                 abuild checksum
                 abuild -r
               '
             "
 
-          # Clean keys
+          # 3. Cleanup and Collection
           rm -f packaging/private.rsa packaging/private.rsa.pub
-
-          # Rename and prepare artifacts
           mkdir -p final_packages
           sudo chown -R $USER:$USER packaging/pkg
-          find packaging/pkg -name "*.apk" -exec sh -c 'cp "$1" "final_packages/$(basename "${1%-r*}-${{ matrix.arch }}.apk")"' _ {} \;
+
+          # Improved collect: find all APKs and rename them properly
+          find packaging/pkg -name "*.apk" | while read -r apk; do
+            filename=$(basename "\$apk")
+            # Remove the release part (e.g., -r0) to keep it clean
+            clean_name=\$(echo \"\$filename\" | sed -E 's/-r[0-9]+//')
+            cp \"\$apk\" \"final_packages/\${clean_name%.apk}-${{ matrix.arch }}.apk\"
+          done
 
       - uses: actions/upload-artifact@v4
         with:
