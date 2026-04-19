@@ -248,48 +248,35 @@ jobs:
             echo "✅ $file présent"
           done
 
-      - name: Prepare Packaging Environment
+      - name: Build APK (Manual Robust Way)
         run: |
-          # 1. Création physique des clés pour l'action
-          echo "${{ secrets.RSA_PRIVATE_KEY }}" > ${{ github.workspace }}/key
-          echo "${{ secrets.RSA_PUBLIC_KEY }}" > ${{ github.workspace }}/key.pub
+          echo "${{ secrets.RSA_PRIVATE_KEY }}" > ${{ github.workspace }}/packaging/private.rsa
+          echo "${{ secrets.RSA_PUBLIC_KEY }}" > ${{ github.workspace }}/packaging/public.rsa.pub
 
-          # 2. Vérification de la présence des fichiers requis par l'APKBUILD
-          cd packaging
-          FILES=("APKBUILD" "ld.so.conf" "glibc-enable" "glibc-disable")
-          for f in "${FILES[@]}"; do
-            if [ ! -f "$f" ]; then
-              echo "❌ Erreur: $f manquant dans ./packaging"
-              exit 1
-            fi
-          done
+          docker run --rm --platform ${{ matrix.platform }} \
+            -v ${{ github.workspace }}/packaging:/work \
+            -e PKGVER="${{ env.GLIBC_VERSION }}" \
+            -e ARCH="${{ matrix.arch }}" \
+            alpine:3.latest sh -c "
+              apk add --no-cache abuild build-base bash
+              adduser -D builder -G abuild
 
-      - name: Build APK (${{ matrix.arch }})
-        uses: jobians/action-abuild@master
-        with:
-          PACKAGE_PATH: "packaging"
-          release_version: ${{ env.GLIBC_VERSION }}
-          rsa_private_key: ${{ secrets.RSA_PRIVATE_KEY }}
-          rsa_public_key: ${{ secrets.RSA_PUBLIC_KEY }}
+              mkdir -p /home/builder/.abuild
+              cp /work/private.rsa /home/builder/private.rsa
+              cp /work/public.rsa.pub /etc/apk/keys/
+
+              echo \"PACKAGER_PRIVKEY='/home/builder/private.rsa'\" > /home/builder/.abuild/abuild.conf
+              chown -R builder:abuild /home/builder /work
+
+              su builder -c 'cd /work && abuild -r'
+            "
 
       - name: Collect and Rename APKs
         run: |
           mkdir -p final_packages
-          # On utilise sudo car l'action Docker crée les fichiers avec l'utilisateur root/builder
-          sudo find ~/packages -type f -name "*.apk" -exec cp {} final_packages/ \;
+          sudo chown -R $USER:$USER ${{ github.workspace }}/packaging/
 
-          cd final_packages
-          for f in *.apk; do
-            # Nettoyage du nom : glibc-2.43-r0.apk -> glibc-2.43-x86_64.apk
-            newname=$(echo "$f" | sed "s/-r[0-9]*\.apk/-${{ matrix.arch }}.apk/")
-            [ "$f" != "$newname" ] && mv "$f" "$newname"
-          done
-
-      - name: Collect and Rename APKs
-        run: |
-          mkdir -p final_packages
-          # Récupération des APKs depuis le dossier généré par l'action
-          sudo find ~/packages -type f -name "*.apk" -exec cp {} final_packages/ \;
+          find ${{ github.workspace }}/packaging/pkg -name "*.apk" -exec cp {} final_packages/ \;
 
           cd final_packages
           for f in *.apk; do
@@ -297,7 +284,7 @@ jobs:
             [ "$f" != "$newname" ] && mv "$f" "$newname"
           done
 
-      - name: Release creation and APK upload
+      - name: Release creation
         uses: ncipollo/release-action@v1
         with:
           tag: v${{ env.GLIBC_VERSION }}
