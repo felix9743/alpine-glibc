@@ -80,6 +80,7 @@ jobs:
     if: needs.check_version.outputs.should_build == 'true'
     name: glibc compilation (${{ matrix.arch }})
     strategy:
+      fail-fast: true
       matrix:
         include:
           - arch: aarch64
@@ -121,6 +122,7 @@ jobs:
     if: needs.check_version.outputs.should_build == 'true'
     name: Debian libs packaging (${{ matrix.arch }})
     strategy:
+      fail-fast: true
       matrix:
         include:
           - arch: aarch64
@@ -137,8 +139,8 @@ jobs:
           echo "deb [trusted=yes] http://deb.debian.org/debian trixie main" | sudo tee /etc/apt/sources.list.d/trixie.list
           sudo apt-get update -q
           mkdir -p debs && cd debs
-          # Native download (same arch as runner)
-          sudo apt-get download libstdc++6 libgcc-s1 libtirpc3
+          # libtirpc3 is now libtirpc3t64 in Trixie due to 64-bit time transition
+          sudo apt-get download --allow-unauthenticated libstdc++6 libgcc-s1 libtirpc3t64
 
       - name: Extract .so libraries
         run: |
@@ -187,7 +189,7 @@ jobs:
     if: needs.check_version.outputs.should_build == 'true'
     name: Build Alpine APK (${{ matrix.arch }})
     strategy:
-      fail-fast: false
+      fail-fast: true
       matrix:
         include:
           - arch: aarch64
