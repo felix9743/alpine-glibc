@@ -1,14 +1,12 @@
 name: Build and Release glibc
 
 on:
-  push:
-    branches: [main]
   schedule:
-    - cron: '0 0 * * 0' # Weekly check for updates
+    - cron: '0 0 * * 0' # Weekly check for new stable releases
   workflow_dispatch:
     inputs:
       glibc_version:
-        description: "Manually override version (leave empty for latest)"
+        description: "glibc version to build (e.g. 2.43, 2.41). Leave empty for latest stable."
         required: false
         default: ""
 
@@ -16,33 +14,65 @@ permissions:
   contents: write
 
 jobs:
+  # ------------------------------------------------------------------
+  # 1. Version detection & validation
+  # ------------------------------------------------------------------
   check_version:
     runs-on: ubuntu-latest
     outputs:
-      version: ${{ steps.get_version.outputs.version }}
-      exists: ${{ steps.check_tag.outputs.exists }}
+      version: ${{ steps.resolve.outputs.version }}
+      should_build: ${{ steps.resolve.outputs.should_build }}
     steps:
-      - name: Get Latest Version
-        id: get_version
+      - name: Resolve target version
+        id: resolve
         run: |
-          if [ -n "${{ github.event.inputs.glibc_version }}" ]; then
-            echo "version=${{ github.event.inputs.glibc_version }}" >> $GITHUB_OUTPUT
+          MANUAL="${{ github.event.inputs.glibc_version }}"
+
+          if [ -n "$MANUAL" ]; then
+            # Manual trigger: build the exact requested version
+            echo "version=$MANUAL" >> $GITHUB_OUTPUT
+            echo "should_build=true" >> $GITHUB_OUTPUT
+            echo "Manual build requested: $MANUAL"
           else
-            # Scrape GNU mirror for the highest version number
-            LATEST=$(curl -s https://ftp.gnu.org/gnu/libc/ | grep -oE 'glibc-[0-9]+\.[0-9]+(\.[0-9]+)?\.tar\.xz' | sort -V | tail -n 1 | sed 's/glibc-//;s/\.tar\.xz//')
+            # Scheduled / push: find latest stable (no rc/pre-release)
+            LATEST=$(curl -s https://ftp.gnu.org/gnu/libc/ \
+              | grep -oE 'glibc-[0-9]+\.[0-9]+(\.[0-9]+)?\.tar\.xz' \
+              | grep -v 'rc' \
+              | sort -V | tail -n 1 \
+              | sed 's/glibc-//;s/\.tar\.xz//')
             echo "version=$LATEST" >> $GITHUB_OUTPUT
+            echo "Latest stable detected: $LATEST"
           fi
 
-      - name: Check if Tag Exists
-        uses: mukunku/tag-exists-action@v1.6.0
+      - name: Check if tag already exists
         id: check_tag
-        with: 
-          tag: 'v${{ steps.get_version.outputs.version }}'
+        uses: mukunku/tag-exists-action@v1.6.0
+        with:
+          tag: 'v${{ steps.resolve.outputs.version }}'
 
+      - name: Decide whether to build
+        id: decide
+        run: |
+          MANUAL="${{ github.event.inputs.glibc_version }}"
+          TAG_EXISTS="${{ steps.check_tag.outputs.exists }}"
+
+          if [ -n "$MANUAL" ]; then
+            # Manual: always build (allows re-building an existing version)
+            echo "should_build=true" >> $GITHUB_OUTPUT
+          elif [ "$TAG_EXISTS" = "true" ]; then
+            echo "Tag already exists, skipping build."
+            echo "should_build=false" >> $GITHUB_OUTPUT
+          else
+            echo "should_build=true" >> $GITHUB_OUTPUT
+          fi
+
+  # ------------------------------------------------------------------
+  # 2. glibc compilation (Docker, per architecture)
+  # ------------------------------------------------------------------
   build_docker:
     needs: check_version
-    if: needs.check_version.outputs.exists == 'false'
-    name: Docker Build (${{ matrix.arch }})
+    if: needs.check_version.outputs.should_build == 'true'
+    name: glibc compilation (${{ matrix.arch }})
     strategy:
       matrix:
         include:
@@ -54,7 +84,7 @@ jobs:
     env:
       GLIBC_VERSION: ${{ needs.check_version.outputs.version }}
     steps:
-      - name: Checkout code
+      - name: Checkout
         uses: actions/checkout@v4
 
       - name: Create artifacts directory
@@ -63,24 +93,93 @@ jobs:
       - name: Build Docker image
         run: docker build -f builder/Dockerfile -t glibc-builder:${{ github.sha }} .
 
-      - name: Build glibc tarball
+      - name: glibc compilation → tarball
         run: |
           docker run --rm \
             -e GLIBC_VERSION="${{ env.GLIBC_VERSION }}" \
             -e STDOUT=1 \
             glibc-builder:${{ github.sha }} \
-            > artifacts/glibc-${{ env.GLIBC_VERSION }}-0-${{ matrix.arch }}.tar.gz
+            > artifacts/glibc-${{ env.GLIBC_VERSION }}-${{ matrix.arch }}.tar.gz
 
-      - name: Upload Docker Artifact
+      - name: Upload artifact glibc
         uses: actions/upload-artifact@v4
         with:
           name: docker-glibc-${{ matrix.arch }}
           path: artifacts/*.tar.gz
 
+  # ------------------------------------------------------------------
+  # 3. Debian Trixie runtime libs extraction (libstdc++, libgcc_s)
+  # ------------------------------------------------------------------
+  package_libs:
+    needs: check_version
+    if: needs.check_version.outputs.should_build == 'true'
+    name: Debian libs packaging (${{ matrix.arch }})
+    strategy:
+      matrix:
+        include:
+          - arch: aarch64
+            runner: ubuntu-24.04-arm
+          - arch: x86_64
+            runner: ubuntu-latest
+    runs-on: ${{ matrix.runner }}
+    env:
+      GLIBC_VERSION: ${{ needs.check_version.outputs.version }}
+    steps:
+      - name: Download Debian Trixie packages
+        run: |
+          # Enable Trixie in APT sources
+          echo "deb http://deb.debian.org/debian trixie main" | sudo tee /etc/apt/sources.list.d/trixie.list
+          sudo apt-get update -q
+          mkdir -p debs && cd debs
+          # Native download (same arch as runner)
+          sudo apt-get download libstdc++6 libgcc-s1 libtirpc3
+
+      - name: Extract .so libraries
+        run: |
+          mkdir -p extracted
+          for deb in debs/*.deb; do
+            dpkg --fsys-tarfile "$deb" | tar -xf - -C extracted 2>/dev/null || true
+          done
+
+      - name: glibc-libs tarball structuring
+        run: |
+          mkdir -p pkg/usr/lib/glibc/lib
+
+          # libstdc++.so.6 (copy actual file, resolve possible versioned symlink)
+          SO=$(find extracted -name "libstdc++.so.6.*" | grep -v '\.py' | head -1)
+          [ -n "$SO" ] && cp "$SO" pkg/usr/lib/glibc/lib/libstdc++.so.6
+
+          # libgcc_s.so.1
+          SO=$(find extracted -name "libgcc_s.so.1" | head -1)
+          [ -n "$SO" ] && cp "$SO" pkg/usr/lib/glibc/lib/libgcc_s.so.1
+
+          # libtirpc.so.3 (replaces deprecated Sun RPC from glibc)
+          SO=$(find extracted -name "libtirpc.so.3.*" | head -1)
+          if [ -n "$SO" ]; then
+            cp "$SO" pkg/usr/lib/glibc/lib/libtirpc.so.3
+          else
+            SO=$(find extracted -name "libtirpc.so.3" | head -1)
+            [ -n "$SO" ] && cp "$SO" pkg/usr/lib/glibc/lib/libtirpc.so.3
+          fi
+
+          # Verification
+          ls -lh pkg/usr/lib/glibc/lib/
+
+          tar -czf "glibc-libs-${{ env.GLIBC_VERSION }}-${{ matrix.arch }}.tar.gz" -C pkg .
+
+      - name: Upload artifact glibc-libs
+        uses: actions/upload-artifact@v4
+        with:
+          name: debian-libs-${{ matrix.arch }}
+          path: "*.tar.gz"
+
+  # ------------------------------------------------------------------
+  # 4. Alpine Packaging (APK) — waits for previous jobs
+  # ------------------------------------------------------------------
   build_alpine:
-    needs: [check_version, build_docker]
-    if: needs.check_version.outputs.exists == 'false'
-    name: Alpine Build (${{ matrix.arch }})
+    needs: [check_version, build_docker, package_libs]
+    if: needs.check_version.outputs.should_build == 'true'
+    name: Build Alpine APK (${{ matrix.arch }})
     strategy:
       fail-fast: false
       matrix:
@@ -93,19 +192,25 @@ jobs:
     env:
       GLIBC_VERSION: ${{ needs.check_version.outputs.version }}
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
 
       - name: Fix git safe directory
         run: git config --global --add safe.directory /github/workspace
 
-      - name: Download Docker Artifact
+      - name: Download artifact glibc
         uses: actions/download-artifact@v4
         with:
           name: docker-glibc-${{ matrix.arch }}
           path: packaging/
 
-      - name: Build glibc ${{ matrix.arch }}
+      - name: Download artifact glibc-libs (Debian)
+        uses: actions/download-artifact@v4
+        with:
+          name: debian-libs-${{ matrix.arch }}
+          path: packaging/
+
+      - name: Build APK (${{ matrix.arch }})
         uses: jobians/action-abuild@master
         with:
           PACKAGE_PATH: "packaging"
@@ -113,24 +218,32 @@ jobs:
           rsa_private_key: ${{ secrets.RSA_PRIVATE_KEY }}
           rsa_public_key: ${{ secrets.RSA_PUBLIC_KEY }}
 
-      - name: Rename APKs
+      - name: APK renaming (strip -rN, add architecture)
         run: |
           sudo chown -R $USER:$USER packages/
           TARGET_DIR=$(find packages -type f -name "*.apk" -exec dirname {} \; | head -n 1)
-          if [ -z "$TARGET_DIR" ]; then exit 1; fi
+          [ -z "$TARGET_DIR" ] && exit 1
           cd "$TARGET_DIR"
           for f in *.apk; do
-            if [[ ! "$f" == *"-${{ matrix.arch }}.apk" ]]; then
-              mv "$f" "${f%.apk}-${{ matrix.arch }}.apk"
-            fi
+            # glibc-2.43-r0.apk -> glibc-2.43-x86_64.apk
+            newname=$(echo "$f" | sed "s/-r[0-9]*\.apk/-${{ matrix.arch }}.apk/")
+            [ "$f" != "$newname" ] && mv "$f" "$newname"
           done
 
-      - name: Create Release and Upload APKs
+      - name: Release creation and APK upload
         uses: ncipollo/release-action@v1
         with:
           tag: v${{ env.GLIBC_VERSION }}
           name: "Alpine Glibc ${{ env.GLIBC_VERSION }}"
-          body: "Automated multi-arch build of Alpine glibc packages."
+          body: |
+            Automated multi-arch build of Alpine glibc packages.
+
+            **Packages included:**
+            - `glibc` — core shared libraries
+            - `glibc-bin` — utilities (ldconfig, ldd, glibc-enable, glibc-disable)
+            - `glibc-libs` — C++ runtime libs from Debian Trixie (libstdc++, libgcc_s, libtirpc)
+            - `glibc-i18n` — localization data
+            - `glibc-dev` — development files (headers)
           artifacts: "packages/**/*.apk"
           allowUpdates: true
           replacesArtifacts: true

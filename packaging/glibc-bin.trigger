@@ -1,2 +1,2 @@
 #!/bin/sh
-/usr/glibc-compat/sbin/ldconfig
+/usr/lib/glibc/sbin/ldconfig

@@ -1,0 +1,24 @@
+#!/bin/sh
+set -e
+
+# --- Restore musl loaders (in-place backup) ---
+for dest in /lib64/ld-linux-x86-64.so.2 /lib/ld-linux-aarch64.so.1; do
+    backup="${dest}.musl"
+    if [ -f "$backup" ]; then
+        rm -f "$dest"        # remove glibc symlink
+        mv "$backup" "$dest" # restore musl binary
+    else
+        rm -f "$dest"        # no backup = glibc had created this link, remove it
+    fi
+done
+
+# --- Remove glibc multiarch symlinks ---
+ARCH=$(uname -m)
+[ "$ARCH" = "x86_64" ] && DIR="x86_64-linux-gnu" || DIR="aarch64-linux-gnu"
+for lib in libc.so.6 libm.so.6 libpthread.so.0 libdl.so.2 librt.so.1; do
+    rm -f "/lib/$DIR/$lib" "/usr/lib/$DIR/$lib"
+done
+
+# --- Cleanup ldconfig config ---
+rm -f /etc/ld.so.conf.d/glibc.conf
+/usr/lib/glibc/sbin/ldconfig 2>/dev/null || true

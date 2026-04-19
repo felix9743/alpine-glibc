@@ -1,0 +1,23 @@
+#!/bin/sh
+# Restore musl as system dynamic linker.
+# Usage: glibc-disable
+set -e
+
+ARCH=$(uname -m)
+if [ "$ARCH" = "x86_64" ]; then
+    DEST="/lib64/ld-linux-x86-64.so.2"
+else
+    DEST="/lib/ld-linux-aarch64.so.1"
+fi
+
+BACKUP="${DEST}.musl"
+if [ -f "$BACKUP" ]; then
+    rm -f "$DEST"
+    mv "$BACKUP" "$DEST"
+    echo "musl restored: $DEST"
+else
+    rm -f "$DEST"
+    echo "glibc symlink removed (no musl backup found)"
+fi
+
+ldconfig 2>/dev/null || true

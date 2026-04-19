@@ -4,12 +4,12 @@
 FROM ubuntu:24.04
 
 # Metadata
-LABEL org.opencontainers.image.authors="JOBIANSTECHIE <jobianstechie@gmail.com>"
-LABEL org.opencontainers.image.source="https://github.com/Jobians/alpine-glibc"
+LABEL org.opencontainers.image.authors="felix9743 <felix.9743@laposte.net>"
+LABEL org.opencontainers.image.source="https://github.com/felix9743/alpine-glibc"
 LABEL org.opencontainers.image.description="Build glibc binaries for Alpine Linux"
 
 ENV DEBIAN_FRONTEND=noninteractive
-ENV PREFIX_DIR=/usr/glibc-compat
+ENV PREFIX_DIR=/usr/lib/glibc
 
 # Install dependencies
 RUN apt-get update -q && apt-get install -qy \
@@ -17,6 +17,7 @@ RUN apt-get update -q && apt-get install -qy \
     build-essential \
     gawk \
     gettext \
+    linux-libc-dev \
     openssl \
     python3 \
     texinfo \

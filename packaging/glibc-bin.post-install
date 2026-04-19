@@ -1,0 +1,3 @@
+#!/bin/sh
+# Post-install glibc-bin: rebuild ldconfig cache
+/usr/lib/glibc/sbin/ldconfig 2>/dev/null || true

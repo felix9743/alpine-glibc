@@ -1,25 +1,38 @@
-# Maintainer: JOBIANSTECHIE <jobianstechie@gmail.com>
+# Maintainer: felix9743 <felix.9743@laposte.net>
 
 pkgname="glibc"
-pkgver="2.42"
+pkgver="2.43"
 pkgrel="0"
 pkgdesc="GNU C Library compatibility layer"
 arch="x86_64 aarch64"
-url="https://github.com/Jobians/alpine-glibc"
+url="https://github.com/felix9743/alpine-glibc"
 license="LGPL"
 options="!check !scanelf !tracedeps"
+install="$pkgname.post-install $pkgname.pre-deinstall"
 
-source="glibc-${pkgver}-${pkgrel}-$CARCH.tar.gz
-ld.so.conf"
+source="$pkgname-${pkgver}-$CARCH.tar.gz
+    $pkgname-libs-${pkgver}-$CARCH.tar.gz
+    ld.so.conf
+    $pkgname.post-install
+    $pkgname.pre-deinstall
+    $pkgname-bin.post-install
+    $pkgname-bin.pre-deinstall
+    $pkgname-libs.post-install
+    $pkgname-libs.pre-deinstall
+    $pkgname-enable
+    $pkgname-disable"
 
-subpackages="$pkgname-bin $pkgname-dev $pkgname-i18n:i18n:noarch"
-triggers="$pkgname-bin.trigger=/lib:/usr/lib:/usr/glibc-compat/lib"
+subpackages="$pkgname-bin $pkgname-dev $pkgname-i18n:i18n:noarch $pkgname-libs:libs"
+triggers="$pkgname-bin.trigger=/lib:/usr/lib:/usr/lib/glibc/lib"
 
 package() {
-    mkdir -p "$pkgdir/lib" "$pkgdir/usr/glibc-compat/lib/locale" "$pkgdir"/usr/glibc-compat/lib64 "$pkgdir"/etc
+    mkdir -p "$pkgdir/lib" \
+             "$pkgdir/usr/lib/glibc/lib/locale" \
+             "$pkgdir/usr/lib/glibc/lib64" \
+             "$pkgdir/etc"
     cp -a "$srcdir"/usr "$pkgdir"
-    cp "$srcdir"/ld.so.conf "$pkgdir"/usr/glibc-compat/etc/ld.so.conf
-    
+    cp "$srcdir"/ld.so.conf "$pkgdir"/usr/lib/glibc/etc/ld.so.conf
+
     local loader=""
     if [ "$CARCH" = "aarch64" ]; then
         loader="ld-linux-aarch64.so.1"
@@ -27,26 +40,32 @@ package() {
         loader="ld-linux-x86-64.so.2"
     fi
 
-    # Cleanup files moved to subpackages
-    rm -rf "$pkgdir"/usr/glibc-compat/etc/rpc \
-           "$pkgdir"/usr/glibc-compat/bin \
-           "$pkgdir"/usr/glibc-compat/sbin \
-           "$pkgdir"/usr/glibc-compat/lib/gconv \
-           "$pkgdir"/usr/glibc-compat/lib/getconf \
-           "$pkgdir"/usr/glibc-compat/lib/audit \
-           "$pkgdir"/usr/glibc-compat/share \
-           "$pkgdir"/usr/glibc-compat/var
+    # Files moved to subpackages
+    rm -rf "$pkgdir"/usr/lib/glibc/etc/rpc \
+           "$pkgdir"/usr/lib/glibc/bin \
+           "$pkgdir"/usr/lib/glibc/sbin \
+           "$pkgdir"/usr/lib/glibc/lib/gconv \
+           "$pkgdir"/usr/lib/glibc/lib/getconf \
+           "$pkgdir"/usr/lib/glibc/lib/audit \
+           "$pkgdir"/usr/lib/glibc/share \
+           "$pkgdir"/usr/lib/glibc/var
 
-    # Main package symlinks using the architecture-specific loader
-    ln -s /usr/glibc-compat/lib/$loader "$pkgdir"/lib/$loader
-    ln -s /usr/glibc-compat/lib/$loader "$pkgdir"/usr/glibc-compat/lib64/$loader
-    ln -s /usr/glibc-compat/etc/ld.so.cache "$pkgdir"/etc/ld.so.cache
+    # Debian runtime libs -> moved to $pkgname-libs subpackage
+    rm -f "$pkgdir"/usr/lib/glibc/lib/libstdc++.so.6
+    rm -f "$pkgdir"/usr/lib/glibc/lib/libgcc_s.so.1
+    rm -f "$pkgdir"/usr/lib/glibc/lib/libtirpc.so.3
+
+    # Dynamic linker symlinks
+    ln -s /usr/lib/glibc/lib/$loader "$pkgdir"/lib/$loader
+    ln -s /usr/lib/glibc/lib/$loader "$pkgdir"/usr/lib/glibc/lib64/$loader
+    ln -s /usr/lib/glibc/etc/ld.so.cache "$pkgdir"/etc/ld.so.cache
 }
 
 bin() {
-    pkgdesc="GNU C Library binaries"
+    pkgdesc="GNU C Library binaries and utilities"
     depends="$pkgname bash libgcc"
-    
+    install="$pkgname-bin.post-install $pkgname-bin.pre-deinstall"
+
     local loader=""
     [ "$CARCH" = "aarch64" ] && loader="ld-linux-aarch64.so.1" || loader="ld-linux-x86-64.so.2"
 
@@ -60,15 +79,34 @@ bin() {
         so:libpthread.so.0=0
         so:libutil.so.1=1
     "
-    
-    mkdir -p "$subpkgdir"/usr/glibc-compat
-    cp -a "$srcdir"/usr/glibc-compat/bin "$subpkgdir"/usr/glibc-compat
-    cp -a "$srcdir"/usr/glibc-compat/sbin "$subpkgdir"/usr/glibc-compat
+
+    mkdir -p "$subpkgdir"/usr/lib/glibc "$subpkgdir"/usr/local/bin
+    cp -a "$srcdir"/usr/lib/glibc/bin  "$subpkgdir"/usr/lib/glibc
+    cp -a "$srcdir"/usr/lib/glibc/sbin "$subpkgdir"/usr/lib/glibc
+
+    # musl/glibc switch tools
+    install -Dm0755 "$startdir"/$pkgname-enable  "$subpkgdir"/usr/local/bin/$pkgname-enable
+    install -Dm0755 "$startdir"/$pkgname-disable "$subpkgdir"/usr/local/bin/$pkgname-disable
 }
 
 i18n() {
     pkgdesc="GNU C Library i18n data"
     depends="$pkgname-bin"
-    mkdir -p "$subpkgdir"/usr/glibc-compat
-    cp -a "$srcdir"/usr/glibc-compat/share "$subpkgdir"/usr/glibc-compat
+    mkdir -p "$subpkgdir"/usr/lib/glibc
+    cp -a "$srcdir"/usr/lib/glibc/share "$subpkgdir"/usr/lib/glibc
+}
+
+libs() {
+    # libstdc++, libgcc_s and libtirpc extracted from Debian Trixie.
+    # libtirpc replaces the deprecated Sun RPC support removed from glibc >= 2.26.
+    # Maintained separately from $pkgname-bin because their source is independent of the glibc build.
+    # If these libs are ever compiled from source, they will be integrated into $pkgname-bin.
+    pkgdesc="Debian Trixie runtime libs: libstdc++, libgcc_s and libtirpc for $pkgname compat"
+    depends="$pkgname-bin"
+    install="$pkgname-libs.post-install $pkgname-libs.pre-deinstall"
+
+    mkdir -p "$subpkgdir"/usr/lib/glibc/lib
+    cp "$srcdir"/usr/lib/glibc/lib/libstdc++.so.6 "$subpkgdir"/usr/lib/glibc/lib/ 2>/dev/null || true
+    cp "$srcdir"/usr/lib/glibc/lib/libgcc_s.so.1  "$subpkgdir"/usr/lib/glibc/lib/ 2>/dev/null || true
+    cp "$srcdir"/usr/lib/glibc/lib/libtirpc.so.3  "$subpkgdir"/usr/lib/glibc/lib/ 2>/dev/null || true
 }
