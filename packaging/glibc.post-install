@@ -1,0 +1,47 @@
+#!/bin/sh
+set -e
+
+# --- x86_64 dynamic linker ---
+GLIBC_X64="/usr/lib/glibc/lib/ld-linux-x86-64.so.2"
+DEST_X64="/lib64/ld-linux-x86-64.so.2"
+if [ -f "$GLIBC_X64" ]; then
+    mkdir -p /lib64
+    # In-place backup of musl file if it exists (and is not already a glibc symlink)
+    if [ -e "$DEST_X64" ] && [ ! -L "$DEST_X64" ]; then
+        mv "$DEST_X64" "${DEST_X64}.musl"
+    fi
+    ln -sf "$GLIBC_X64" "$DEST_X64"
+fi
+
+# --- aarch64 dynamic linker ---
+GLIBC_A64="/usr/lib/glibc/lib/ld-linux-aarch64.so.1"
+DEST_A64="/lib/ld-linux-aarch64.so.1"
+if [ -f "$GLIBC_A64" ]; then
+    if [ -e "$DEST_A64" ] && [ ! -L "$DEST_A64" ]; then
+        mv "$DEST_A64" "${DEST_A64}.musl"
+    fi
+    ln -sf "$GLIBC_A64" "$DEST_A64"
+fi
+
+# --- Debian compatibility symlinks (multiarch paths) ---
+ARCH=$(uname -m)
+if [ "$ARCH" = "x86_64" ]; then
+    DIR="x86_64-linux-gnu"
+    GLIBC_LIB="/usr/lib/glibc/lib"
+    mkdir -p "/lib/$DIR" "/usr/lib/$DIR"
+    for lib in libc.so.6 libm.so.6 libpthread.so.0 libdl.so.2 librt.so.1; do
+        [ -f "$GLIBC_LIB/$lib" ] && ln -sf "$GLIBC_LIB/$lib" "/lib/$DIR/$lib"
+    done
+else
+    DIR="aarch64-linux-gnu"
+    GLIBC_LIB="/usr/lib/glibc/lib"
+    mkdir -p "/lib/$DIR" "/usr/lib/$DIR"
+    for lib in libc.so.6 libm.so.6 libpthread.so.0 libdl.so.2 librt.so.1; do
+        [ -f "$GLIBC_LIB/$lib" ] && ln -sf "$GLIBC_LIB/$lib" "/lib/$DIR/$lib"
+    done
+fi
+
+# --- Library loader configuration ---
+mkdir -p /etc/ld.so.conf.d
+echo "/usr/lib/glibc/lib" > /etc/ld.so.conf.d/glibc.conf
+/usr/lib/glibc/sbin/ldconfig 2>/dev/null || true

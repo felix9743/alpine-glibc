@@ -5,7 +5,7 @@ set -euo pipefail
 
 main() {
     version="${1:-${GLIBC_VERSION:?GLIBC version required}}"
-    prefix="${2:-/usr/glibc-compat}"
+    prefix="${2:-/usr/lib/glibc}"
     mirror="${GLIBC_MIRROR:-https://ftpmirror.gnu.org/libc}"  
     output_dir="${OUTPUT_DIR:-/output}"  
 

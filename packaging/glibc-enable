@@ -1,0 +1,25 @@
+#!/bin/sh
+# Re-enable glibc as system dynamic linker (idempotent).
+# Usage: glibc-enable
+set -e
+
+ARCH=$(uname -m)
+if [ "$ARCH" = "x86_64" ]; then
+    LOADER="/usr/lib/glibc/lib/ld-linux-x86-64.so.2"
+    DEST="/lib64/ld-linux-x86-64.so.2"
+    mkdir -p /lib64
+else
+    LOADER="/usr/lib/glibc/lib/ld-linux-aarch64.so.1"
+    DEST="/lib/ld-linux-aarch64.so.1"
+fi
+
+[ -f "$LOADER" ] || { echo "Error: glibc not installed ($LOADER missing)" >&2; exit 1; }
+
+# In-place backup of musl loader if present
+if [ -e "$DEST" ] && [ ! -L "$DEST" ]; then
+    mv "$DEST" "${DEST}.musl"
+fi
+
+ln -sf "$LOADER" "$DEST"
+/usr/lib/glibc/sbin/ldconfig 2>/dev/null || true
+echo "glibc enabled: $DEST -> $LOADER"

@@ -1,0 +1,3 @@
+#!/bin/sh
+# Pre-deinstall glibc-bin: rebuild ldconfig cache with remaining paths
+ldconfig 2>/dev/null || true
