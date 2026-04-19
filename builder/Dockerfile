@@ -9,7 +9,7 @@ LABEL org.opencontainers.image.source="https://github.com/Jobians/alpine-glibc"
 LABEL org.opencontainers.image.description="Build glibc binaries for Alpine Linux"
 
 ENV DEBIAN_FRONTEND=noninteractive
-ENV PREFIX_DIR=/usr/glibc-compat
+ENV PREFIX_DIR=/usr/lib/glibc
 
 # Install dependencies
 RUN apt-get update -q && apt-get install -qy \

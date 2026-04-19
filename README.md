@@ -55,7 +55,7 @@ apk add --allow-untrusted glibc-${VERSION}-${ARCH}.apk glibc-bin-${VERSION}-${AR
 After installation, verify that the glibc dynamic linker is working:
 
 ```bash
-/usr/glibc-compat/bin/ldd --version
+/usr/lib/glibc/bin/ldd --version
 
 ```
 
@@ -63,7 +63,7 @@ After installation, verify that the glibc dynamic linker is working:
 
 ## 💖 Donate
 
-If you like this project and want to support development, you can donate using crypto:  
+If you like this project and want to support development, you can donate using crypto:
 
 [Donate here](https://cwallet.com/t/TE6A6KMV)
 

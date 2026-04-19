@@ -1,5 +1,5 @@
-slibdir=/usr/glibc-compat/lib
-rtlddir=/usr/glibc-compat/lib
-sbindir=/usr/glibc-compat/bin
-rootsbindir=/usr/glibc-compat/bin
+slibdir=/usr/lib/glibc/lib
+rtlddir=/usr/lib/glibc/lib
+sbindir=/usr/lib/glibc/bin
+rootsbindir=/usr/lib/glibc/bin
 build-programs=yes

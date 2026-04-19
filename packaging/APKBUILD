@@ -13,13 +13,13 @@ source="glibc-${pkgver}-${pkgrel}-$CARCH.tar.gz
 ld.so.conf"
 
 subpackages="$pkgname-bin $pkgname-dev $pkgname-i18n:i18n:noarch"
-triggers="$pkgname-bin.trigger=/lib:/usr/lib:/usr/glibc-compat/lib"
+triggers="$pkgname-bin.trigger=/lib:/usr/lib:/usr/lib/glibc/lib"
 
 package() {
-    mkdir -p "$pkgdir/lib" "$pkgdir/usr/glibc-compat/lib/locale" "$pkgdir"/usr/glibc-compat/lib64 "$pkgdir"/etc
+    mkdir -p "$pkgdir/lib" "$pkgdir/usr/lib/glibc/lib/locale" "$pkgdir"/usr/lib/glibc/lib64 "$pkgdir"/etc
     cp -a "$srcdir"/usr "$pkgdir"
-    cp "$srcdir"/ld.so.conf "$pkgdir"/usr/glibc-compat/etc/ld.so.conf
-    
+    cp "$srcdir"/ld.so.conf "$pkgdir"/usr/lib/glibc/etc/ld.so.conf
+
     local loader=""
     if [ "$CARCH" = "aarch64" ]; then
         loader="ld-linux-aarch64.so.1"
@@ -28,25 +28,25 @@ package() {
     fi
 
     # Cleanup files moved to subpackages
-    rm -rf "$pkgdir"/usr/glibc-compat/etc/rpc \
-           "$pkgdir"/usr/glibc-compat/bin \
-           "$pkgdir"/usr/glibc-compat/sbin \
-           "$pkgdir"/usr/glibc-compat/lib/gconv \
-           "$pkgdir"/usr/glibc-compat/lib/getconf \
-           "$pkgdir"/usr/glibc-compat/lib/audit \
-           "$pkgdir"/usr/glibc-compat/share \
-           "$pkgdir"/usr/glibc-compat/var
+    rm -rf "$pkgdir"/usr/lib/glibc/etc/rpc \
+           "$pkgdir"/usr/lib/glibc/bin \
+           "$pkgdir"/usr/lib/glibc/sbin \
+           "$pkgdir"/usr/lib/glibc/lib/gconv \
+           "$pkgdir"/usr/lib/glibc/lib/getconf \
+           "$pkgdir"/usr/lib/glibc/lib/audit \
+           "$pkgdir"/usr/lib/glibc/share \
+           "$pkgdir"/usr/lib/glibc/var
 
     # Main package symlinks using the architecture-specific loader
-    ln -s /usr/glibc-compat/lib/$loader "$pkgdir"/lib/$loader
-    ln -s /usr/glibc-compat/lib/$loader "$pkgdir"/usr/glibc-compat/lib64/$loader
-    ln -s /usr/glibc-compat/etc/ld.so.cache "$pkgdir"/etc/ld.so.cache
+    ln -s /usr/lib/glibc/lib/$loader "$pkgdir"/lib/$loader
+    ln -s /usr/lib/glibc/lib/$loader "$pkgdir"/usr/lib/glibc/lib64/$loader
+    ln -s /usr/lib/glibc/etc/ld.so.cache "$pkgdir"/etc/ld.so.cache
 }
 
 bin() {
     pkgdesc="GNU C Library binaries"
     depends="$pkgname bash libgcc"
-    
+
     local loader=""
     [ "$CARCH" = "aarch64" ] && loader="ld-linux-aarch64.so.1" || loader="ld-linux-x86-64.so.2"
 
@@ -60,15 +60,15 @@ bin() {
         so:libpthread.so.0=0
         so:libutil.so.1=1
     "
-    
-    mkdir -p "$subpkgdir"/usr/glibc-compat
-    cp -a "$srcdir"/usr/glibc-compat/bin "$subpkgdir"/usr/glibc-compat
-    cp -a "$srcdir"/usr/glibc-compat/sbin "$subpkgdir"/usr/glibc-compat
+
+    mkdir -p "$subpkgdir"/usr/lib/glibc
+    cp -a "$srcdir"/usr/lib/glibc/bin "$subpkgdir"/usr/lib/glibc
+    cp -a "$srcdir"/usr/lib/glibc/sbin "$subpkgdir"/usr/lib/glibc
 }
 
 i18n() {
     pkgdesc="GNU C Library i18n data"
     depends="$pkgname-bin"
-    mkdir -p "$subpkgdir"/usr/glibc-compat
-    cp -a "$srcdir"/usr/glibc-compat/share "$subpkgdir"/usr/glibc-compat
+    mkdir -p "$subpkgdir"/usr/lib/glibc
+    cp -a "$srcdir"/usr/lib/glibc/share "$subpkgdir"/usr/lib/glibc
 }
